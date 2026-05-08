@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Файлы</title>
+
+<style>
+body {
+  background:#0d1117;
+  color:#c9d1d9;
+  font-family:Arial;
+  padding:30px;
+  font-size:18px;
+}
+
+h1 { margin-bottom:15px; }
+
+.topbar {
+  margin-bottom:20px;
+}
+
+input {
+  width:100%;
+  background:#161b22;
+  border:1px solid #30363d;
+  color:#c9d1d9;
+  padding:10px;
+  border-radius:6px;
+}
+
+.file {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:12px;
+  border-bottom:1px solid #30363d;
+}
+
+.file:hover { background:#161b22; }
+
+.left {
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.right {
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+a {
+  color:#58a6ff;
+  text-decoration:none;
+}
+
+.icon { width:20px; }
+
+.download, .view {
+  width:28px;
+  cursor:pointer;
+  opacity:0.85;
+}
+
+.download:hover, .view:hover { opacity:1; }
+
+.toggle {
+  cursor:pointer;
+  font-size:18px;
+  user-select:none;
+  opacity:0.7;
+}
+
+.date {
+  font-size:14px;
+  color:#8b949e;
+  display:none;
+}
+
+.date.open { display:block; }
+</style>
+</head>
+
+<body>
+
+<h1>Файлы</h1>
+
+<div class="topbar">
+  <input id="search" placeholder="Поиск файлов...">
+</div>
+
+<div id="files">Загрузка...</div>
+
+<script>
+const USER = "viewbin";
+const REPO = "page";
+const PATH = "";
+
+/* 🔑 ТОКЕН */
+const GITHUB_TOKEN = "";
+
+async function api(url) {
+  const headers = {};
+  if (GITHUB_TOKEN) {
+    headers["Authorization"] = "Bearer " + GITHUB_TOKEN;
+  }
+  return fetch(url, { headers });
+}
+
+let allFiles = [];
+
+async function getFileDate(path) {
+  try {
+    const res = await api(
+      `https://api.github.com/repos/${USER}/${REPO}/commits?path=${path}&per_page=1`
+    );
+    const data = await res.json();
+    if (!data || !data.length) return new Date(0);
+    return new Date(data[0].commit.committer.date);
+  } catch {
+    return new Date(0);
+  }
+}
+
+async function downloadFile(url, name) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function viewFile(url) {
+  window.open(url, "_blank");
+}
+
+function toggleDate(id, el) {
+  const d = document.getElementById(id);
+  d.classList.toggle("open");
+  el.textContent = d.classList.contains("open") ? "▼" : "▶";
+}
+
+document.getElementById("search").addEventListener("input", () => {
+  const q = document.getElementById("search").value.toLowerCase();
+
+  const filtered = allFiles.filter(f =>
+    f.name.toLowerCase().includes(q)
+  );
+
+  render(filtered);
+});
+
+function render(files) {
+  const container = document.getElementById("files");
+  container.innerHTML = "";
+
+  files.forEach(file => {
+    const id = "d" + Math.random();
+
+    const div = document.createElement("div");
+    div.className = "file";
+
+    div.innerHTML = `
+      <div class="left">
+        <img src="file.svg" class="icon">
+
+        <a href="#" onclick="downloadFile('${file.download_url}','${file.name}');return false;">
+          ${file.name}
+        </a>
+
+        <img src="download.svg" class="download"
+             onclick="downloadFile('${file.download_url}','${file.name}')">
+
+        <img src="view.svg" class="view"
+             onclick="viewFile('${file.download_url}')">
+      </div>
+
+      <div class="right">
+        <div id="${id}" class="date">
+          ${file.date.toLocaleString()}
+        </div>
+
+        <span class="toggle" onclick="toggleDate('${id}', this)">▶</span>
+      </div>
+    `;
+
+    container.appendChild(div);
+  });
+}
+
+async function loadFiles() {
+  const res = await api(
+    `https://api.github.com/repos/${USER}/${REPO}/contents/${PATH}`
+  );
+
+  const data = await res.json();
+
+  let files = data.filter(f =>
+    f.type === "file" &&
+    f.name !== "file.svg" &&
+    f.name !== "download.svg" &&
+    f.name !== "index.html" &&
+    f.name !== "view.svg"
+  );
+
+  allFiles = await Promise.all(
+    files.map(async file => ({
+      ...file,
+      date: await getFileDate(file.path)
+    }))
+  );
+
+  allFiles.sort((a,b)=>b.date-a.date);
+
+  render(allFiles);
+}
+
+loadFiles();
+</script>
+
+</body>
+</html>
